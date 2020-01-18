@@ -101,7 +101,6 @@ class Import{
 					->setWebsiteIds(array($this->getWebsiteId()));
 			$product->setDescription($data['description']);
 			$product->setShortDescription($data['short_description']);
-			//$product->setBrands("Kids ONLY");
 			try{
 				
 				$product->save();
@@ -204,7 +203,6 @@ class Import{
 	}
 	
 	public function addProductData($product,$data){
-		//echo '<pre>';print_R($data);
 		$productRepository = $this->ob('\Magento\Catalog\Api\ProductRepositoryInterface');
 		
 		$product->setPrice($data['price'])
@@ -250,26 +248,15 @@ class Import{
 			$type = $this->getAttributeType($key);
 			if($type == "select" || $type == "swatch_visual" || $type == "swatch_text" ){
 				
-				//echo $key.'--'.$value;
-				//echo "<br/>";
 				$attribute = $this->getAttribute($key);
-				//echo "<pre>".$key.' - '.$attribute->getFrontendInput().'--'.$value;
 				$results = $this->getOptionIdFromValue($value);
 				
 				$attributeOptionId = "";
 				if($key == "maat"){
-					/* if($value == 74){
-						echo '<pre>';print_R($results);
-						die;
-					
-					} */
-					//echo $key.'--------'.$value;
 					if(count($results) > 0){
 						foreach($results as $optionData){
 							
 							$attributeOptions = $this->getAttributeOptionIds($attribute->getId(),$optionData['option_id']);
-							//echo '<pre>';print_r($attributeOptions);
-							//echo '<pre>';print_r($optionData);
 							if(count($attributeOptions) > 0){
 								$attributeOptionId = $optionData['option_id'];
 							}
@@ -280,13 +267,11 @@ class Import{
 					$attributeOptionId = $attribute->getSource()->getOptionId($value);
 				}
 				
-				//echo $attributeOptionId;die;
-				//$attribute->getSource()->getOptionId($value);
 				if(!$attributeOptionId){
-					
-					$attributeOptionId = $this->addAttributeOption($key,$value);
+					if($value){
+						$attributeOptionId = $this->addAttributeOption($key,$value);
+					}
 				}
-				//echo '--'.$attributeOptionId;
 				try{
 					$this->ob('\Magento\Catalog\Model\ResourceModel\Product\Action')->updateAttributes([$product->getId()], array($key => $attributeOptionId), 0);
 					
@@ -294,29 +279,10 @@ class Import{
 				}catch(\Exception $ex){
 					
 				}
-				//echo "************************************** \n";
 			}
 			
 		}
-		//print_R($custom_attr);
-		//die('t1');
-		 
-		//$product->setBrands($data['brands']);
-		
-		/*
-		try{
-			$_product->save();
-			echo $_product->getId();
-		}catch(\Exception $ex){
-			echo $ex->getMessage();
-		}
-		
-		//$this->productRepository->save($product);
-		$productRepository->save($product);
-		
-		echo '---'.$_product->getBrands();*/
 		$product->save();
-		//die('test');
 		return $product;
 	}
 	
