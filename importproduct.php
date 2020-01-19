@@ -17,7 +17,7 @@ $filename = "import.csv";
 
 $import = new Import();
 $collection = $import->getCsvToArray($filename);
-//echo '<pre>';print_r($collection);
+
 foreach($collection as $product){
 	
 	$product = $import->validateData($product);
@@ -39,7 +39,7 @@ foreach($collection as $product){
 
 echo "Product Successfully Imported";
 
-echo "<br/>Please wait.. while we reindex the data";
+echo "<br/>Please wait.. while we reindex the data \n";
 $import->reIndexing();
 class Import{
 	
@@ -70,12 +70,15 @@ class Import{
 		
 	}
 	
+	/**
+	*	create Simple Product
+	*
+	*/
 	public function createSimpleProduct($data){
 		if(isset($data['url_key'])){
 			unset($data['url_key']);
 		}
 		
-		//$data = $this->checkProductAttribute($data);
 		$product = $this->ob('\Magento\Catalog\Model\Product');
 		
 		$urlKey = $this->getUrlKey($data);
@@ -109,7 +112,9 @@ class Import{
 				if (($data['image'] == $data['small_image']) && ($data['small_image'] == $data['thumbnail'])) {
 					
 					$keys = explode(",",'image,small_image,thumbnail');
-					$this->addImage($product,$data['image'],$keys);
+					$product = $this->addImage($product,$data['image'],$keys);
+					$product->save();
+					
 				}else{
 					foreach($images as $key => $value){
 						$this->addImage($product,$value,array($key));
@@ -119,7 +124,7 @@ class Import{
 				if(!empty($data['images'])){
 					$galleryImages = explode(",",$data['images']);
 					foreach($galleryImages as $image){
-						$this->addImage($product,$image,array());
+						$this->addImage($product,$image,array('image'));
 					}
 				}
 				
@@ -130,11 +135,16 @@ class Import{
 			$this->addProductData($product,$data);
 		
 		}
-		//die;
 		return $product;
 	}
 	
+	
+	/**
+	*	Update Product Images
+	*
+	*/
 	public function updateImages($product,$data){
+		
 		if($data['image']){
 			$imageProcessor = $this->ob('\Magento\Catalog\Model\Product\Gallery\Processor');
 			$images = $product->getMediaGalleryImages();
@@ -142,6 +152,7 @@ class Import{
 				$imageProcessor->removeImage($product, $child->getFile());
 			}
 		}
+		$product->save();
 		$images = array('image' => $data['image'],'small_image' => $data['small_image'],'thumbnail' => $data['thumbnail']);
 		if (($data['image'] == $data['small_image']) && ($data['small_image'] == $data['thumbnail'])) {
 			$keys = explode(",",'image,small_image,thumbnail');
@@ -155,11 +166,33 @@ class Import{
 		if(!empty($data['images'])){
 			$galleryImages = explode(",",$data['images']);
 			foreach($galleryImages as $image){
-				$this->addImage($product,$image,array());
+				$this->addImage($product,$image,array('additional_images'));
 			}
 		}
 	}
 	
+	/**
+	*	Update Product Image
+	*
+	*/
+	public function addImage($product,$image,$type){
+		if($image){
+			// Adding Image to product
+			$imagePath = "import".$image; // path of the image
+			$imageRootPath = getcwd().'/../media/'.$imagePath;
+			shell_exec("chmod 777 $imageRootPath");
+			if(file_exists($imageRootPath)){
+				$product->addImageToMediaGallery($imagePath, $type, false, false);
+				$product->save();
+			}
+		}
+		return $product;
+	}
+	
+	/**
+	*	get unique Product Url Key
+	*
+	*/
 	public function getUrlKey($data){
 		$url = preg_replace('#[^0-9a-z]+#i', '-', $data['name']);
 		$urlKey = strtolower($url);
@@ -202,6 +235,10 @@ class Import{
 		}
 	}
 	
+	/**
+	*	Update Product Data
+	*
+	*/
 	public function addProductData($product,$data){
 		$productRepository = $this->ob('\Magento\Catalog\Api\ProductRepositoryInterface');
 		
@@ -286,6 +323,10 @@ class Import{
 		return $product;
 	}
 	
+	/**
+	*	Validate Product Data
+	*
+	*/
 	public function validateData($data){
 		if($data['visibility'] == "Catalog, Search"){
 			$data['visibility'] = 4;
@@ -301,6 +342,10 @@ class Import{
 		return $data;
 	}
 	
+	/**
+	*	Get Product Status
+	*
+	*/
 	public function getStatus($data){
 		if($data['status'] == "Ingeschakeld"){
 			return true;
@@ -316,6 +361,11 @@ class Import{
 		
 		return false;
 	}
+	
+	/**
+	*	Get Attribute Set Id
+	*
+	*/
 	
 	public function getAttributeSetId($attrSetName)
 	{
@@ -340,10 +390,13 @@ class Import{
 	}
 	
 	
-	
+	/**
+	*	Create Configurable Product
+	*
+	*/
 	public function createConfigurableProducts($data){
+		
 		$prod = $this->ob('\Magento\Catalog\Model\Product');
-		//$data['type'] = "simple";
 		$product = $this->createSimpleProduct($data);
 		$productId = $product->getId(); // Configurable Product Id
 		
@@ -364,9 +417,12 @@ class Import{
 		return $product;
 	}
 	
+	/**
+	*	Associate products to configurable product
+	*
+	*/
 	public function associateConfigProducts($associatedProductIds,$product,$attributes,$data){
 		
-		//$product = $this->ob('\Magento\Catalog\Model\Product')->load($product->getId());
 		/* Associate simple product to configurable */
 		
 		$attributeModel = $this->ob('Magento\ConfigurableProduct\Model\Product\Type\Configurable\Attribute');
@@ -379,7 +435,7 @@ class Import{
 		try{
 			$this->ob('Magento\ConfigurableProduct\Model\Product\Type\Configurable')->setUsedProductAttributeIds($attributes, $product);
 		}catch(\Exception $ex){
-			
+			//echo $ex->getMessage();
 		}
 		$product->setCanSaveConfigurableAttributes(true);
 		
@@ -399,13 +455,17 @@ class Import{
 		try{
 			$product->save();
 		}catch(\Exception $ex){
-			echo $ex->getMessage();
+			//echo $ex->getMessage();die;
 		}
 		return $product;
 	}
 	
+	/**
+	*	create Grouped Product
+	*
+	*/
+	
 	public function createGroupedProducts($data){
-		//$data['type'] = "simple";
 		$product = $this->createSimpleProduct($data);
 		
 		$productId = $product->getId(); 
@@ -414,33 +474,19 @@ class Import{
 		
 		$this->addLinksToProduct($associatedProductSkus,$product);
 		
-		/* //set product type
-		//$product->setTypeId("grouped");
-		//$product->save();
-		print_r($associatedProductIds);
-		foreach($associatedProductIds as $sku){
-			$childrenIds[] = $this->getIdBySku($sku);
-		}
-		
-		$_product = $this->ob('\Magento\Catalog\Api\ProductRepositoryInterface')->getById($product->getId());
-		$this->associateGroupProducts($childrenIds,$_product);
-		try{
-			$product->save();
-		}
-		catch(\Exception $ex){
-			echo $ex->getMessage();
-		}
-		die; */
 		return $product;
 	}
 	
+	
+	/**
+	*	Associate products to grouped product
+	*
+	*/
 	public function addLinksToProduct($associatedProductSkus, $product) {
 		$links = array();
 		$position = 0;
-		//print_R($associatedProductSkus);die;
 		foreach ($associatedProductSkus as $key => $sku) {
 			$position++;
-			//echo $sku;die;
 			$linkedProduct = $this->getProdBySku($sku);
 			if($linkedProduct){
 			$productLinkFactory = $this->ob('\Magento\Catalog\Model\ProductLink\LinkFactory');
@@ -458,50 +504,8 @@ class Import{
 		$product->setProductLinks($links);
 
 		$product->save();
-		//die;
 	}
 	
-	public function associateGroupProducts($childrenIds,$product){
-		$associated = array();
-		$position = 0;
-		
-		foreach($childrenIds as $productId){
-		   $position++;
-		   //You need to load each product to get what you need in order to build $productLink
-		   $linkedProduct = $this->getProdById($productId);
-		   
-		   /** @var \Magento\Catalog\Api\Data\ProductLinkInterface $productLink */
-		   $productLink = $this->ob('\Magento\Catalog\Api\Data\ProductLinkInterface');
-		   $productLink->setSku($product->getSku()) //sku of product group
-			   ->setLinkType('associated')
-			   ->setLinkedProductSku($linkedProduct->getSku())
-			   ->setLinkedProductType($linkedProduct->getTypeId())
-			   ->setPosition($position)
-			   ->getExtensionAttributes()
-			   ->setQty($linkedProduct->getQty());
-		   $associated[$productId] = $productLink;
-		   
-		}
-		$product->setProductLinks($associated);
-		$product->setGroupedLinkData($associated); 
-		$productRepository = $this->ob('\Magento\Catalog\Api\ProductRepositoryInterface');
-		$productRepository->save($product);
-	}
-	
-	
-	
-	public function addImage($product,$image,$type){
-		if($image){
-			// Adding Image to product
-			$imagePath = "import".$image; // path of the image
-			$imageRootPath = getcwd().'/../media/'.$imagePath;
-			if(file_exists($imageRootPath)){
-				//echo '---'.$imagePath;die;
-				$product->addImageToMediaGallery($imagePath, $type, false, false);
-				$product->save();
-			}
-		}
-	}
 	
 	public function ob($cl){
 		$oM = \Magento\Framework\App\ObjectManager::getInstance();
@@ -515,41 +519,8 @@ class Import{
 		}
 	}
 	
-	public function checkProductAttribute($attrList){
-		foreach($attrList as $key => $value){
-			//echo $key;
-			if(!in_array($key,$this->getDefaultAttributeList())){
-				try{
-					$attribute = $this->ob('\Magento\Eav\Model\Entity\Attribute')->loadByCode('catalog_product', $key);
-					if($attribute->getId()){
-						
-						if($attribute->getFrontendInput() == "select" || $attribute->getFrontendInput() == "swatch_visual" || $attribute->getFrontendInput() == "swatch_text"){
-							
-							if($value){
-								echo "<br/>".$key.' - '.$attribute->getFrontendInput().'--'.$value;
-								$attributeOptionId = $attribute->getSource()->getOptionId($value);
-								if(!$attributeOptionId){
-									$attributeOptionId = $this->addAttributeOption($key,$value);
-								}
-								$attrList[$key] = $attributeOptionId;
-							}
-						}
-					}
-				}catch(\Exception $ex){
-					//echo $ex->getMessage();
-					continue;
-				}
-			}
-			
-		}
-		//die;
-		return $attrList;
-	}
 	
 	public function getDefaultAttributeList(){
-		/* return array(
-				'store','websites','attribute_set','category_ids','type','sku','name','price','description','short_description','image','small_image','thumbnail','weight','has_options','is_in_stock','qty','manage_stock','status','options_container','tax_class_id','visibility','images','page_layout','qty_increments','grouped_product_sku','associatedProductIds','associated_products'
-		); */
 		
 		return array(
 				'store','websites','url_key','attribute_set','category_ids','type','sku','image','small_image','thumbnail','weight','has_options','is_in_stock','qty','manage_stock','status','options_container','tax_class_id','visibility','images','page_layout','qty_increments','grouped_product_sku','associatedProductIds','associated_products','configurable_attributes','name','price'
@@ -698,6 +669,10 @@ class Import{
         return $tableName;
     }
 	
+	/**
+	*	get attribute option ids
+	*
+	*/
 	public function getAttributeOptionIds($attrId,$optionId){
 		
 		$resourceConnection = $this->ob('\Magento\Framework\App\ResourceConnection');
@@ -728,6 +703,5 @@ class Import{
 			$results = array();
 		}
 		return $results;
-		//echo "<pre>";print_r($results);
 	}
 }
